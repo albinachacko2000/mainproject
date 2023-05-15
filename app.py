@@ -1,8 +1,10 @@
-from flask import Flask, request
+from flask import Flask, jsonify, request
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from textblob import TextBlob
 
 app = Flask(__name__)
 
@@ -46,6 +48,7 @@ def predict():
 
         # Make predictions on the testing data
         y_pred = rf_regressor.predict(X_test)
+        
 
         # Evaluate the model using R-squared metric
         r2 = r2_score(y_test, y_pred)
@@ -57,6 +60,58 @@ def predict():
         top_product = product_sales.iloc[product_sales["total_sales_pred"].argmax()]
 
         # Add the predictions to the list
-        predictions.append({"month": month, "r2_score": round(r2, 2), "best_selling_product": top_product['productid']})
-
+        predictions.append({"month": month, "r2_score": round(r2, 2), "best_selling_product": top_product['productid'] })
+    
     return {"predictions": predictions}
+@app.route('/predict2', methods=['POST'])
+def predict_sales():
+    csv_file = request.files['csv_file']
+    month = int(request.form['month'])
+
+    # Load data from CSV file
+    sales_data = pd.read_csv(csv_file)
+
+    # Filter data by month
+    month_data = sales_data[sales_data['month'] == month]
+
+    # Prepare data for linear regression
+    X = sales_data[['month']]
+    y = sales_data[['sales']]
+
+    # Train linear regression model
+    model = LinearRegression()
+    model.fit(X, y)
+    
+
+
+    # Make sales prediction
+    
+    sales = model.predict(pd.DataFrame({'month': [month]}))[0][0]
+    total_sales = sales_data['sales'].sum()
+    sales_percentage = round((sales / total_sales) * 100)
+    sales = round(sales, 2)
+
+    # Return prediction result
+    return jsonify({
+        'sales_percentage': sales_percentage,
+        'sales': sales
+    })
+@app.route('/Analysis', methods=['POST'])
+def sentiment_analysis():
+    texts = request.json.get('texts')
+    sentiment_scores = []
+    for text in texts:
+        blob = TextBlob(text)
+        sentiment = blob.sentiment.polarity
+        sentiment_scores.append(sentiment)
+    average_sentiment = sum(sentiment_scores) / len(sentiment_scores)
+    response = {
+        'positive': len([s for s in sentiment_scores if s > 0]),
+        'negative': len([s for s in sentiment_scores if s < 0]),
+        'neutral': len([s for s in sentiment_scores if s == 0]),
+        'average_sentiment': average_sentiment
+    }
+    return response
+
+if __name__ == '__main__':
+    app.run()
